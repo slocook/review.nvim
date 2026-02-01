@@ -200,11 +200,11 @@ function M.open_comment_list(comments, opts)
 
   vim.keymap.set("n", "<CR>", function()
     local id = get_selected_id()
-    if id and opts.on_jump then
-      opts.on_jump(id)
-    end
     if vim.api.nvim_win_is_valid(win) then
       vim.api.nvim_win_close(win, true)
+    end
+    if id and opts.on_jump then
+      opts.on_jump(id)
     end
   end, { buffer = buf, silent = true })
 
@@ -225,11 +225,11 @@ function M.open_comment_list(comments, opts)
 
   vim.keymap.set("n", "e", function()
     local id = get_selected_id()
-    if id and opts.on_edit then
-      opts.on_edit(id)
-    end
     if vim.api.nvim_win_is_valid(win) then
       vim.api.nvim_win_close(win, true)
+    end
+    if id and opts.on_edit then
+      opts.on_edit(id)
     end
   end, { buffer = buf, silent = true })
 end

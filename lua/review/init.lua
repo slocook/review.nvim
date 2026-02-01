@@ -43,6 +43,7 @@ local function build_comment(selection_data, text)
   return {
     file = selection_data.file,
     buffer_name = selection_data.buffer_name,
+    bufnr = selection_data.bufnr,
     side = selection_data.side,
     kind = selection_data.kind,
     filetype = selection_data.filetype,
@@ -86,7 +87,28 @@ local function refresh_diagnostics_for_file(file)
   })
 end
 
+local function refresh_diagnostics_for_buf(bufnr, file_hint)
+  if not bufnr or bufnr < 1 then
+    return
+  end
+  if not vim.api.nvim_buf_is_valid(bufnr) then
+    return
+  end
+  local diags = {}
+  for _, comment in ipairs(state.list()) do
+    if comment.bufnr == bufnr or (file_hint and comment.file == file_hint) then
+      table.insert(diags, comment_to_diagnostic(comment))
+    end
+  end
+  vim.diagnostic.set(diag_ns, bufnr, diags, {
+    virtual_text = false,
+    signs = true,
+    underline = false,
+  })
+end
+
 local function refresh_diagnostics_for_comment(comment)
+  refresh_diagnostics_for_buf(comment.bufnr, comment.file)
   refresh_diagnostics_for_file(comment.file)
 end
 
@@ -140,14 +162,17 @@ function M.list_comments()
       if not comment then
         return
       end
-      if not comment.file or comment.file == "" then
-        notify("Comment has no file path", vim.log.levels.WARN)
-        return
-      end
       if vim.api.nvim_win_is_valid(origin_win) then
         vim.api.nvim_set_current_win(origin_win)
       end
-      vim.cmd("edit " .. vim.fn.fnameescape(comment.file))
+      if comment.file and comment.file ~= "" then
+        vim.cmd("edit " .. vim.fn.fnameescape(comment.file))
+      elseif comment.bufnr and vim.api.nvim_buf_is_valid(comment.bufnr) then
+        vim.api.nvim_set_current_buf(comment.bufnr)
+      else
+        notify("Comment has no file or buffer", vim.log.levels.WARN)
+        return
+      end
       vim.api.nvim_win_set_cursor(0, { comment.range.start_line, 0 })
       refresh_diagnostics_for_comment(comment)
       ui.open_comment_prompt(comment, {
@@ -172,14 +197,17 @@ function M.list_comments()
       if not comment then
         return
       end
-      if not comment.file or comment.file == "" then
-        notify("Comment has no file path", vim.log.levels.WARN)
-        return
-      end
       if vim.api.nvim_win_is_valid(origin_win) then
         vim.api.nvim_set_current_win(origin_win)
       end
-      vim.cmd("edit " .. vim.fn.fnameescape(comment.file))
+      if comment.file and comment.file ~= "" then
+        vim.cmd("edit " .. vim.fn.fnameescape(comment.file))
+      elseif comment.bufnr and vim.api.nvim_buf_is_valid(comment.bufnr) then
+        vim.api.nvim_set_current_buf(comment.bufnr)
+      else
+        notify("Comment has no file or buffer", vim.log.levels.WARN)
+        return
+      end
       vim.api.nvim_win_set_cursor(0, { comment.range.start_line, 0 })
       refresh_diagnostics_for_comment(comment)
       ui.open_comment_prompt(comment, {
@@ -196,14 +224,17 @@ function M.list_comments()
       if not comment then
         return
       end
-      if not comment.file or comment.file == "" then
-        notify("Comment has no file path", vim.log.levels.WARN)
-        return
-      end
       if vim.api.nvim_win_is_valid(origin_win) then
         vim.api.nvim_set_current_win(origin_win)
       end
-      vim.cmd("edit " .. vim.fn.fnameescape(comment.file))
+      if comment.file and comment.file ~= "" then
+        vim.cmd("edit " .. vim.fn.fnameescape(comment.file))
+      elseif comment.bufnr and vim.api.nvim_buf_is_valid(comment.bufnr) then
+        vim.api.nvim_set_current_buf(comment.bufnr)
+      else
+        notify("Comment has no file or buffer", vim.log.levels.WARN)
+        return
+      end
       vim.api.nvim_win_set_cursor(0, { comment.range.start_line, 0 })
       refresh_diagnostics_for_comment(comment)
       vim.diagnostic.open_float(0, {

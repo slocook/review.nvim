@@ -15,10 +15,29 @@ local function get_visual_kind()
   return "char"
 end
 
+local function normalize_codediff_uri(name)
+  if not name:match("^codediff://") then
+    return name
+  end
+  local stripped = name:gsub("^codediff://", "")
+  local parts = vim.split(stripped, "///", { plain = true, trimempty = true })
+  if #parts >= 2 then
+    local repo = parts[1]
+    local rel = parts[#parts] or ""
+    local rel_parts = vim.split(rel, "/", { plain = true, trimempty = true })
+    if #rel_parts >= 2 and rel_parts[1]:match("^[0-9a-fA-F]+$") then
+      table.remove(rel_parts, 1)
+    end
+    local relpath = table.concat(rel_parts, "/")
+    return repo .. "/" .. relpath
+  end
+  return name
+end
+
 local function get_buffer_path(buf)
   local name = vim.api.nvim_buf_get_name(buf)
   if name ~= "" then
-    return name
+    return normalize_codediff_uri(name)
   end
   return nil
 end
@@ -28,7 +47,7 @@ local function resolve_diff_peer(buf)
   local wins = vim.api.nvim_tabpage_list_wins(tab)
   for _, win in ipairs(wins) do
     local win_buf = vim.api.nvim_win_get_buf(win)
-    if win_buf ~= buf and vim.bo[win_buf].diff then
+    if win_buf ~= buf and vim.wo[win].diff then
       local name = vim.api.nvim_buf_get_name(win_buf)
       if name ~= "" and vim.loop.fs_stat(name) then
         return name
@@ -75,6 +94,7 @@ function M.capture_visual(buf)
   local peer_path = resolve_diff_peer(buf)
 
   return {
+    bufnr = buf,
     kind = kind,
     file = file_path or peer_path,
     buffer_name = file_path or "",
@@ -101,6 +121,7 @@ function M.capture_current_line(buf)
   end
 
   return {
+    bufnr = buf,
     kind = "line",
     file = file_path or peer_path,
     buffer_name = file_path or "",
