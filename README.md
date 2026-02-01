@@ -1,18 +1,26 @@
 # review.nvim
 
-Capture code review comments from diffs and export them for AI iteration or Beads.
+Capture review comments directly from diffs, then export to markdown or create Beads subtasks.
+
+## Features
+
+- Line/block capture in diffs (CodeDiff) or normal buffers
+- Floating comment editor with selection preview
+- Comment list with jump, edit, delete
+- Diagnostics signs + popup preview for comments
+- Export as single markdown or per-comment markdown
+- Optional Beads integration (`bd create`)
 
 ## Requirements
 
 - Neovim 0.12+
-- Lua-only configuration
 - Optional: `bd` CLI for Beads integration
 
 ## Install (Lazy.nvim)
 
 ```lua
 {
-  "yourname/review.nvim",
+  "slocook/review.nvim",
   dependencies = {
     "esmuellert/codediff.nvim",
   },
@@ -25,27 +33,37 @@ Capture code review comments from diffs and export them for AI iteration or Bead
         enabled = false,
         branch_pattern = "epic/([^/]+)",
       },
+      ui = {
+        diagnostic_icon = "📝",
+      },
     })
   end,
 }
 ```
 
+## Usage
+
+1. Open a diff with CodeDiff (or any buffer).
+2. Select lines (visual line or block mode) and run `:ReviewComment`.
+3. Use `:ReviewList` to jump/edit/delete comments.
+4. Run `:ReviewExport` to export or create beads.
+
 ## Commands
 
-- `:ReviewComment` (use visual line/block selection or current line)
-- `:ReviewList` (list/edit/delete/jump)
-- `:ReviewExport` (if beads enabled, create bead(s); otherwise write markdown)
+- `:ReviewComment` — Capture comment from visual selection or current line
+- `:ReviewList` — Open comment list (jump/edit/delete)
+- `:ReviewExport` — If beads enabled, create bead(s); otherwise write markdown
 
-## Behavior
+## Export
 
-- Visual line/block selections capture file path, line range, and code text.
-- Comments are stored in memory for the current session.
-- Export writes to `stdpath("cache")/review.nvim` by default.
-- Beads integration uses the same export mode:
-  - `single`: one bead for the whole review
-  - `per_comment`: one bead per comment
+- Default path: `stdpath("cache")/review.nvim`
+- Mode:
+  - `single` — one markdown file for the full review
+  - `per_comment` — one markdown file per comment
 
-## Beads configuration
+## Beads integration
+
+If `beads.enabled = true`, `:ReviewExport` will create beads instead of writing markdown.
 
 ```lua
 require("review").setup({
@@ -60,3 +78,39 @@ require("review").setup({
 ```
 
 If branch inference fails and prompting is enabled, you will be asked for a parent bead id.
+
+## Configuration
+
+```lua
+require("review").setup({
+  export = {
+    mode = "single",
+    dir = vim.fn.stdpath("cache") .. "/review.nvim",
+  },
+  beads = {
+    enabled = false,
+    cmd = "bd",
+    extra_args = {},
+    parent_from_branch = true,
+    branch_pattern = "epic/([^/]+)",
+    prompt_if_missing = true,
+  },
+  ui = {
+    border = "rounded",
+    width = 0.7,
+    height = 0.6,
+    preview_height = 0.35,
+    title = "Review Comment",
+    diagnostic_header = "Comment",
+    diagnostic_icon = "📝",
+    signs = {
+      info = "📝",
+    },
+  },
+})
+```
+
+## Notes
+
+- Comments live in memory for the current session (persistence is planned).
+- For CodeDiff, navigation keeps the 3‑column layout intact.
