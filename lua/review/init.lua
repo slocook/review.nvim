@@ -23,6 +23,206 @@ local function notify(msg, level)
   vim.notify(msg, level or vim.log.levels.INFO)
 end
 
+local refresh_diagnostics_for_comment
+
+local function get_codediff_explorer()
+  local ok, lifecycle = pcall(require, "codediff.ui.lifecycle")
+  if not ok then
+    return nil
+  end
+  return lifecycle.get_explorer(vim.api.nvim_get_current_tabpage())
+end
+
+local function normalize_path(path)
+  if not path or path == "" then
+    return nil
+  end
+  return vim.fs.normalize(path)
+end
+
+local function relpath_from_root(path, root)
+  path = normalize_path(path)
+  root = normalize_path(root)
+  if not path or not root then
+    return nil
+  end
+  if path:sub(1, #root) == root then
+    local rel = path:sub(#root + 1)
+    rel = rel:gsub("^/", "")
+    return rel
+  end
+  return nil
+end
+
+local function find_in_status(status_result, relpath)
+  if not status_result or not relpath then
+    return nil, nil
+  end
+  if status_result.conflicts then
+    for _, file in ipairs(status_result.conflicts) do
+      if file.path == relpath then
+        return file, "conflicts"
+      end
+    end
+  end
+  for _, file in ipairs(status_result.unstaged or {}) do
+    if file.path == relpath then
+      return file, "unstaged"
+    end
+  end
+  for _, file in ipairs(status_result.staged or {}) do
+    if file.path == relpath then
+      return file, "staged"
+    end
+  end
+  return nil, nil
+end
+
+local function find_codediff_window_for_relpath(relpath)
+  local ok, virtual_file = pcall(require, "codediff.core.virtual_file")
+  if not ok then
+    return nil
+  end
+  local tab = vim.api.nvim_get_current_tabpage()
+  for _, win in ipairs(vim.api.nvim_tabpage_list_wins(tab)) do
+    local buf = vim.api.nvim_win_get_buf(win)
+    local name = vim.api.nvim_buf_get_name(buf)
+    if name:match("^codediff://") then
+      local _, _, filepath = virtual_file.parse_url(name)
+      if filepath == relpath then
+        return win
+      end
+    end
+  end
+  return nil
+end
+
+local function retry_jump_to_codediff(relpath, comment, origin_win, on_after, attempts_left)
+  local win = find_codediff_window_for_relpath(relpath)
+  if win and vim.api.nvim_win_is_valid(win) then
+    vim.api.nvim_set_current_win(win)
+    vim.api.nvim_win_set_cursor(0, { comment.range.start_line, 0 })
+    refresh_diagnostics_for_comment(comment)
+    if on_after then
+      on_after()
+    end
+    return
+  end
+  if attempts_left <= 0 then
+    if origin_win and vim.api.nvim_win_is_valid(origin_win) then
+      vim.api.nvim_set_current_win(origin_win)
+    end
+    refresh_diagnostics_for_comment(comment)
+    if on_after then
+      on_after()
+    end
+    return
+  end
+  vim.defer_fn(function()
+    retry_jump_to_codediff(relpath, comment, origin_win, on_after, attempts_left - 1)
+  end, 80)
+end
+
+local function is_codediff_buf(bufnr)
+  if not bufnr or not vim.api.nvim_buf_is_valid(bufnr) then
+    return false
+  end
+  return vim.api.nvim_buf_get_name(bufnr):match("^codediff://") ~= nil
+end
+
+local function codediff_tab_has_buffers()
+  local tab = vim.api.nvim_get_current_tabpage()
+  for _, win in ipairs(vim.api.nvim_tabpage_list_wins(tab)) do
+    local buf = vim.api.nvim_win_get_buf(win)
+    if is_codediff_buf(buf) then
+      return true
+    end
+  end
+  return false
+end
+
+local function find_codediff_buf_for_path(path)
+  if not path or path == "" then
+    return nil, nil
+  end
+  local tab = vim.api.nvim_get_current_tabpage()
+  for _, win in ipairs(vim.api.nvim_tabpage_list_wins(tab)) do
+    local buf = vim.api.nvim_win_get_buf(win)
+    local name = vim.api.nvim_buf_get_name(buf)
+    if name:match("^codediff://") and name:find(path, 1, true) then
+      return buf, win
+    end
+  end
+  return nil, nil
+end
+
+local function jump_to_comment(comment, origin_win, on_after)
+  local explorer = get_codediff_explorer()
+  if explorer and explorer.git_root and comment.file and comment.file ~= "" then
+    local relpath = relpath_from_root(comment.file, explorer.git_root)
+    if relpath then
+      local file_data, group = find_in_status(explorer.status_result, relpath)
+      local selected = file_data and {
+        path = file_data.path,
+        old_path = file_data.old_path,
+        status = file_data.status,
+        git_root = explorer.git_root,
+        group = group or explorer.current_file_group or "unstaged",
+      } or {
+        path = relpath,
+        git_root = explorer.git_root,
+        group = explorer.current_file_group or "unstaged",
+      }
+      explorer.on_file_select(selected)
+      vim.defer_fn(function()
+        retry_jump_to_codediff(relpath, comment, origin_win, on_after, 5)
+      end, 80)
+      return true
+    end
+  end
+
+  local target_buf, target_win
+  if comment.bufnr and vim.api.nvim_buf_is_valid(comment.bufnr) and is_codediff_buf(comment.bufnr) then
+    target_buf = comment.bufnr
+    local wins = vim.fn.win_findbuf(target_buf)
+    if #wins > 0 then
+      target_win = wins[1]
+    end
+  end
+
+  if not target_buf and comment.file and comment.file ~= "" then
+    target_buf, target_win = find_codediff_buf_for_path(comment.file)
+  end
+
+  if target_win and vim.api.nvim_win_is_valid(target_win) then
+    vim.api.nvim_set_current_win(target_win)
+  elseif origin_win and vim.api.nvim_win_is_valid(origin_win) then
+    vim.api.nvim_set_current_win(origin_win)
+  end
+
+  if target_buf and vim.api.nvim_buf_is_valid(target_buf) then
+    vim.api.nvim_set_current_buf(target_buf)
+  elseif comment.file and comment.file ~= "" then
+    if codediff_tab_has_buffers() then
+      notify("Comment file not in current CodeDiff view", vim.log.levels.WARN)
+      return false
+    end
+    vim.cmd("edit " .. vim.fn.fnameescape(comment.file))
+  elseif comment.bufnr and vim.api.nvim_buf_is_valid(comment.bufnr) then
+    vim.api.nvim_set_current_buf(comment.bufnr)
+  else
+    notify("Comment has no file or buffer", vim.log.levels.WARN)
+    return false
+  end
+
+  vim.api.nvim_win_set_cursor(0, { comment.range.start_line, 0 })
+  refresh_diagnostics_for_comment(comment)
+  if on_after then
+    on_after()
+  end
+  return true
+end
+
 local function selection_for_opts(opts)
   local buf = vim.api.nvim_get_current_buf()
   if opts and opts.range and opts.range > 0 then
@@ -107,7 +307,7 @@ local function refresh_diagnostics_for_buf(bufnr, file_hint)
   })
 end
 
-local function refresh_diagnostics_for_comment(comment)
+refresh_diagnostics_for_comment = function(comment)
   refresh_diagnostics_for_buf(comment.bufnr, comment.file)
   refresh_diagnostics_for_file(comment.file)
 end
@@ -162,27 +362,18 @@ function M.list_comments()
       if not comment then
         return
       end
-      if vim.api.nvim_win_is_valid(origin_win) then
-        vim.api.nvim_set_current_win(origin_win)
-      end
-      if comment.file and comment.file ~= "" then
-        vim.cmd("edit " .. vim.fn.fnameescape(comment.file))
-      elseif comment.bufnr and vim.api.nvim_buf_is_valid(comment.bufnr) then
-        vim.api.nvim_set_current_buf(comment.bufnr)
-      else
-        notify("Comment has no file or buffer", vim.log.levels.WARN)
+      if not jump_to_comment(comment, origin_win, function()
+        ui.open_comment_prompt(comment, {
+          initial_text = comment.text,
+          on_submit = function(text)
+            state.update(id, { text = text, timestamp = now() })
+            refresh_diagnostics_for_comment(comment)
+            notify(string.format("Updated comment #%d", id))
+          end,
+        })
+      end) then
         return
       end
-      vim.api.nvim_win_set_cursor(0, { comment.range.start_line, 0 })
-      refresh_diagnostics_for_comment(comment)
-      ui.open_comment_prompt(comment, {
-        initial_text = comment.text,
-        on_submit = function(text)
-          state.update(id, { text = text, timestamp = now() })
-          refresh_diagnostics_for_comment(comment)
-          notify(string.format("Updated comment #%d", id))
-        end,
-      })
     end,
     on_delete = function(id)
       local comment = state.get(id)
@@ -197,52 +388,34 @@ function M.list_comments()
       if not comment then
         return
       end
-      if vim.api.nvim_win_is_valid(origin_win) then
-        vim.api.nvim_set_current_win(origin_win)
-      end
-      if comment.file and comment.file ~= "" then
-        vim.cmd("edit " .. vim.fn.fnameescape(comment.file))
-      elseif comment.bufnr and vim.api.nvim_buf_is_valid(comment.bufnr) then
-        vim.api.nvim_set_current_buf(comment.bufnr)
-      else
-        notify("Comment has no file or buffer", vim.log.levels.WARN)
+      if not jump_to_comment(comment, origin_win, function()
+        ui.open_comment_prompt(comment, {
+          initial_text = comment.text,
+          on_submit = function(text)
+            state.update(id, { text = text, timestamp = now() })
+            refresh_diagnostics_for_comment(comment)
+            notify(string.format("Updated comment #%d", id))
+          end,
+        })
+      end) then
         return
       end
-      vim.api.nvim_win_set_cursor(0, { comment.range.start_line, 0 })
-      refresh_diagnostics_for_comment(comment)
-      ui.open_comment_prompt(comment, {
-        initial_text = comment.text,
-        on_submit = function(text)
-          state.update(id, { text = text, timestamp = now() })
-          refresh_diagnostics_for_comment(comment)
-          notify(string.format("Updated comment #%d", id))
-        end,
-      })
     end,
     on_show = function(id)
       local comment = state.get(id)
       if not comment then
         return
       end
-      if vim.api.nvim_win_is_valid(origin_win) then
-        vim.api.nvim_set_current_win(origin_win)
-      end
-      if comment.file and comment.file ~= "" then
-        vim.cmd("edit " .. vim.fn.fnameescape(comment.file))
-      elseif comment.bufnr and vim.api.nvim_buf_is_valid(comment.bufnr) then
-        vim.api.nvim_set_current_buf(comment.bufnr)
-      else
-        notify("Comment has no file or buffer", vim.log.levels.WARN)
+      if not jump_to_comment(comment, origin_win, function()
+        vim.diagnostic.open_float(0, {
+          scope = "line",
+          focus = false,
+          source = "review.nvim",
+          header = string.format("%s %s", M._config.ui.diagnostic_icon or "", M._config.ui.diagnostic_header or "Comment"),
+        })
+      end) then
         return
       end
-      vim.api.nvim_win_set_cursor(0, { comment.range.start_line, 0 })
-      refresh_diagnostics_for_comment(comment)
-      vim.diagnostic.open_float(0, {
-        scope = "line",
-        focus = false,
-        source = "review.nvim",
-        header = string.format("%s %s", M._config.ui.diagnostic_icon or "", M._config.ui.diagnostic_header or "Comment"),
-      })
     end,
   })
 end
