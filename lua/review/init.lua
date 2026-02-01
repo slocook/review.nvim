@@ -131,8 +131,10 @@ end
 
 function M.list_comments()
   ensure_config()
+  local origin_win = vim.api.nvim_get_current_win()
   ui.open_comment_list(state.list(), {
     fetch_comments = state.list,
+    origin_win = origin_win,
     on_jump = function(id)
       local comment = state.get(id)
       if not comment then
@@ -141,6 +143,9 @@ function M.list_comments()
       if not comment.file or comment.file == "" then
         notify("Comment has no file path", vim.log.levels.WARN)
         return
+      end
+      if vim.api.nvim_win_is_valid(origin_win) then
+        vim.api.nvim_set_current_win(origin_win)
       end
       vim.cmd("edit " .. vim.fn.fnameescape(comment.file))
       vim.api.nvim_win_set_cursor(0, { comment.range.start_line, 0 })
@@ -171,6 +176,9 @@ function M.list_comments()
         notify("Comment has no file path", vim.log.levels.WARN)
         return
       end
+      if vim.api.nvim_win_is_valid(origin_win) then
+        vim.api.nvim_set_current_win(origin_win)
+      end
       vim.cmd("edit " .. vim.fn.fnameescape(comment.file))
       vim.api.nvim_win_set_cursor(0, { comment.range.start_line, 0 })
       refresh_diagnostics_for_comment(comment)
@@ -191,6 +199,9 @@ function M.list_comments()
       if not comment.file or comment.file == "" then
         notify("Comment has no file path", vim.log.levels.WARN)
         return
+      end
+      if vim.api.nvim_win_is_valid(origin_win) then
+        vim.api.nvim_set_current_win(origin_win)
       end
       vim.cmd("edit " .. vim.fn.fnameescape(comment.file))
       vim.api.nvim_win_set_cursor(0, { comment.range.start_line, 0 })
