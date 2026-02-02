@@ -20,11 +20,9 @@ M.defaults = {
     height = 0.6,
     preview_height = 0.35,
     title = "Review Comment",
-    diagnostic_header = "Comment",
-    diagnostic_icon = "📝",
-    signs = {
-      info = "📝",
-    },
+    float_border = "rounded",
+    float_anchor = "left", -- "left" | "cursor"
+    auto_show_float = false,
     keymaps = {
       submit = "<C-s>",
       cancel = "q",

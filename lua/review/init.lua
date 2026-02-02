@@ -312,13 +312,92 @@ refresh_diagnostics_for_comment = function(comment)
   refresh_diagnostics_for_file(comment.file)
 end
 
+local function open_comment_float(cfg)
+  local ui_cfg = cfg.ui or {}
+  local border = ui_cfg.float_border or "rounded"
+  local header = "💬 Comment"
+
+  -- Get diagnostics for current line
+  local bufnr = vim.api.nvim_get_current_buf()
+  local cursor = vim.api.nvim_win_get_cursor(0)
+  local lnum = cursor[1] - 1
+  local diags = vim.diagnostic.get(bufnr, { lnum = lnum, namespace = diag_ns })
+
+  if #diags == 0 then
+    return
+  end
+
+  -- Build content lines
+  local lines = { header }
+  for _, diag in ipairs(diags) do
+    for line in vim.gsplit(diag.message, "\n", { plain = true }) do
+      table.insert(lines, line)
+    end
+  end
+
+  -- Calculate dimensions
+  local max_width = 0
+  for _, line in ipairs(lines) do
+    max_width = math.max(max_width, vim.fn.strdisplaywidth(line))
+  end
+  local width = math.min(max_width + 2, math.floor(vim.o.columns * 0.8))
+  local height = #lines
+
+  -- Create float buffer
+  local float_buf = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_lines(float_buf, 0, -1, false, lines)
+  vim.bo[float_buf].modifiable = false
+
+  -- Highlight header
+  vim.api.nvim_buf_add_highlight(float_buf, -1, "DiagnosticHeader", 0, 0, -1)
+
+  -- Position: left-anchored or cursor-relative
+  local win_opts = {
+    relative = "win",
+    anchor = "NW",
+    width = width,
+    height = height,
+    style = "minimal",
+    border = border,
+    focusable = false,
+  }
+
+  if ui_cfg.float_anchor == "left" then
+    -- Account for sign column, line numbers, fold column
+    local textoff = vim.fn.getwininfo(vim.api.nvim_get_current_win())[1].textoff or 0
+    win_opts.row = vim.fn.winline()
+    win_opts.col = textoff
+  else
+    win_opts.row = vim.fn.winline()
+    win_opts.col = cursor[2]
+  end
+
+  local win = vim.api.nvim_open_win(float_buf, false, win_opts)
+
+  -- Auto-close on cursor move
+  vim.api.nvim_create_autocmd({ "CursorMoved", "CursorMovedI", "BufLeave" }, {
+    buffer = bufnr,
+    once = true,
+    callback = function()
+      if vim.api.nvim_win_is_valid(win) then
+        vim.api.nvim_win_close(win, true)
+      end
+    end,
+  })
+end
+
+function M.show_comment()
+  local cfg = ensure_config()
+  open_comment_float(cfg)
+end
+
 function M.setup(opts)
   M._config = config_mod.merge(opts)
   ui.set_config(M._config)
   vim.diagnostic.config({
     signs = {
       text = {
-        [vim.diagnostic.severity.INFO] = M._config.ui.signs.info or "📝",
+        [vim.diagnostic.severity.INFO] = "💬",
       },
     },
   }, diag_ns)
@@ -347,6 +426,11 @@ function M.comment(opts)
       state.add(comment)
       refresh_diagnostics_for_comment(comment)
       notify(string.format("Added comment #%d", comment.id))
+      if cfg.ui.auto_show_float then
+        vim.schedule(function()
+          open_comment_float(cfg)
+        end)
+      end
     end,
   })
 end
@@ -407,12 +491,7 @@ function M.list_comments()
         return
       end
       if not jump_to_comment(comment, origin_win, function()
-        vim.diagnostic.open_float(0, {
-          scope = "line",
-          focus = false,
-          source = "review.nvim",
-          header = string.format("%s %s", M._config.ui.diagnostic_icon or "", M._config.ui.diagnostic_header or "Comment"),
-        })
+        open_comment_float(M._config)
       end) then
         return
       end

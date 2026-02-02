@@ -18,4 +18,8 @@ if not review._commands_registered then
   vim.api.nvim_create_user_command("ReviewDelete", function()
     review.delete_comment_at_cursor()
   end, {})
+
+  vim.api.nvim_create_user_command("ReviewShow", function()
+    review.show_comment()
+  end, {})
 end

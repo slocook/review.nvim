@@ -33,9 +33,6 @@ Capture review comments directly from diffs, then export to markdown or create B
         enabled = false,
         branch_pattern = "epic/([^/]+)",
       },
-      ui = {
-        diagnostic_icon = "📝",
-      },
     })
   end,
 }
@@ -52,6 +49,7 @@ Capture review comments directly from diffs, then export to markdown or create B
 
 - `:ReviewComment` — Capture comment from visual selection or current line
 - `:ReviewList` — Open comment list (jump/edit/delete)
+- `:ReviewShow` — Show comment at cursor in a floating window
 - `:ReviewExport` — If beads enabled, create bead(s); otherwise write markdown
 - `:ReviewDelete` — Delete comment covering current line
 
@@ -102,11 +100,9 @@ require("review").setup({
     height = 0.6,
     preview_height = 0.35,
     title = "Review Comment",
-    diagnostic_header = "Comment",
-    diagnostic_icon = "📝",
-    signs = {
-      info = "📝",
-    },
+    float_border = "rounded",
+    float_anchor = "left", -- "left" | "cursor"
+    auto_show_float = false,
   },
 })
 ```
