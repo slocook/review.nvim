@@ -64,6 +64,10 @@ function M.open_comment_prompt(selection, opts)
   opts = opts or {}
   local cfg = M.config.ui
 
+  -- Save original window and cursor position
+  local origin_win = vim.api.nvim_get_current_win()
+  local origin_cursor = vim.api.nvim_win_get_cursor(origin_win)
+
   local width, height, row, col = calc_layout(cfg)
   local preview_height = math.floor(height * cfg.preview_height)
   if preview_height < 3 then
@@ -115,6 +119,11 @@ function M.open_comment_prompt(selection, opts)
     end
     if vim.api.nvim_win_is_valid(input_win) then
       vim.api.nvim_win_close(input_win, true)
+    end
+    -- Restore original window and cursor position
+    if vim.api.nvim_win_is_valid(origin_win) then
+      vim.api.nvim_set_current_win(origin_win)
+      pcall(vim.api.nvim_win_set_cursor, origin_win, origin_cursor)
     end
   end
 
