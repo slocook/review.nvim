@@ -53,6 +53,7 @@ Capture review comments directly from diffs, then export to markdown or create B
 - `:ReviewComment` — Capture comment from visual selection or current line
 - `:ReviewList` — Open comment list (jump/edit/delete)
 - `:ReviewExport` — If beads enabled, create bead(s); otherwise write markdown
+- `:ReviewDelete` — Delete comment covering current line
 
 ## Export
 

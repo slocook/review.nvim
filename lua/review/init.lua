@@ -420,6 +420,54 @@ function M.list_comments()
   })
 end
 
+local function collect_candidates(bufnr, file)
+  local items = {}
+  for _, comment in ipairs(state.list()) do
+    if (comment.bufnr and comment.bufnr == bufnr) or (file and comment.file == file) then
+      table.insert(items, comment)
+    end
+  end
+  table.sort(items, function(a, b)
+    if a.range.start_line == b.range.start_line then
+      return a.id < b.id
+    end
+    return a.range.start_line < b.range.start_line
+  end)
+  return items
+end
+
+local function current_context()
+  local bufnr = vim.api.nvim_get_current_buf()
+  local file = vim.api.nvim_buf_get_name(bufnr)
+  if file == "" then
+    file = nil
+  end
+  return bufnr, file, vim.api.nvim_win_get_cursor(0)[1]
+end
+
+local function find_comment_at_line(comments, line)
+  for _, comment in ipairs(comments) do
+    if line >= comment.range.start_line and line <= comment.range.end_line then
+      return comment
+    end
+  end
+  return nil
+end
+
+function M.delete_comment_at_cursor()
+  ensure_config()
+  local bufnr, file, line = current_context()
+  local candidates = collect_candidates(bufnr, file)
+  local comment = find_comment_at_line(candidates, line)
+  if not comment then
+    notify("No comment on current line", vim.log.levels.WARN)
+    return
+  end
+  state.delete(comment.id)
+  refresh_diagnostics_for_comment(comment)
+  notify(string.format("Deleted comment #%d", comment.id))
+end
+
 local function export_single(cfg, comments)
   local path = string.format("%s/review-%s.md", cfg.export.dir, state.session_id)
   local lines = exporter.render_all(comments)

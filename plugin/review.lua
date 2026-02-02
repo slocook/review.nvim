@@ -14,4 +14,8 @@ if not review._commands_registered then
   vim.api.nvim_create_user_command("ReviewExport", function()
     review.export()
   end, {})
+
+  vim.api.nvim_create_user_command("ReviewDelete", function()
+    review.delete_comment_at_cursor()
+  end, {})
 end
