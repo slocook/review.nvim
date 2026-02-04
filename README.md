@@ -2,6 +2,8 @@
 
 Capture review comments directly from diffs, then export to markdown or create Beads subtasks.
 
+![review.nvim demo](review-demo.gif)
+
 ## Features
 
 - Line/block capture in diffs (CodeDiff) or normal buffers
